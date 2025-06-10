@@ -263,7 +263,7 @@ def bot(id_jogador, mao, mesa, jogadores, jogadores_maos):
 def exibir_regras():
     limpar_terminal()
     print("╔══════════════════════════════════════════════╗")
-    print("║          🃏 DOMINÓ DE CARTAS - REGRAS 🃏    ║")
+    print("║          🃏 DOMINÓ DE CARTAS - REGRAS 🃏     ║")
     print("╠══════════════════════════════════════════════╣")
     print("║ - 4 jogadores (você + bots)                  ║")
     print("║ - Cada um recebe 13 cartas                   ║")
