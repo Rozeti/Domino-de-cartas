@@ -3,17 +3,28 @@ import random
 import time
 import queue
 import os
+import shutil
 
 ORDEM = ['K', 'Q', 'J', '10', '9', '8', '7', '6', '5', '4', '3', '2', 'A']
 NAIPES = ['♠', '♥', '♦', '♣']
 NAIPE_INPUT = {'E': '♠', 'C': '♥', 'O': '♦', 'P': '♣'}
-NAIPE_OUTPUT = {v: k for k, v in NAIPE_INPUT.items()}  # Reverse mapping for output
+NAIPE_OUTPUT = {v: k for k, v in NAIPE_INPUT.items()}
 
 lock = threading.Lock()
 turno = 0
 tempo_turno = 50
 jogo_ativo = True
 vencedor = None
+
+TERMINAL_LARGURA_MINIMA = 100
+
+
+def checar_terminal():
+    colunas, _ = shutil.get_terminal_size()
+    if colunas < TERMINAL_LARGURA_MINIMA:
+        print(f"\n⚠️ O terminal está muito estreito ({colunas} colunas). Por favor, aumente para pelo menos {TERMINAL_LARGURA_MINIMA} colunas para exibir corretamente as cartas.")
+        input("\n🔧 Pressione Enter após ajustar o tamanho do terminal...")
+        checar_terminal()
 
 def limpar_terminal():
     os.system('cls' if os.name == 'nt' else 'clear')
@@ -35,70 +46,87 @@ def cartas_validas(mao, mesa):
     return jogaveis
 
 def desenhar_carta(carta, jogavel=False):
-    """Desenha uma carta em 7x11 com margens fixas e destaque se jogável."""
-    borda_sup = "┏━━━━━━━━━━━┓" if jogavel else "┌───────────┐"
-    borda_inf = "┗━━━━━━━━━━━┛" if jogavel else "└───────────┘"
-    borda_sup_pilha = "┌───────────┐"  # Para bordas de cartas empilhadas
+    borda_sup = "┏━━━━━┓" if jogavel else "┌─────┐"
+    borda_inf = "┗━━━━━┛" if jogavel else "└─────┘"
+
+    silhueta = [
+        "┌─────┐",
+        "│     │",
+        "│     │",
+        "│     │",
+        "└─────┘"
+    ]
 
     if not carta:
         return [
-            borda_sup,
-            "│           │",
-            "│           │",
-            "│   Vazio   │",
-            "│           │",
-            "│           │",
-            borda_inf
-        ], borda_sup_pilha
+            ["┌─────┐",
+             "│     │",
+             "│ VAZ │",
+             "│     │",
+             "└─────┘"], silhueta
+        ]
+
     valor, naipe = carta[:-1], carta[-1]
-    valor_display = valor
+    valor = valor.ljust(2) if len(valor) == 1 else valor
     return [
-        borda_sup,
-        f"│ {valor_display:<2}      {naipe} │",
-        "│           │",
-        f"│     {naipe}     │",
-        "│           │",
-        f"│ {naipe}      {valor_display:>2} │",
-        borda_inf
-    ], borda_sup_pilha  # Retorna carta completa e borda para pilha
+        [borda_sup,
+         f"│{valor.center(5)}│",
+         f"│  {naipe}  │",
+         f"│{valor.center(5)}│",
+         borda_inf], silhueta
+    ]
 
 def imprimir_mesa(mesa):
-    """Imprime a mesa com pilhas alinhadas, mostrando a carta do topo e bordas de cartas abaixo."""
-    print("\n╔══════════════════════════════════ MESA ══════════════════════════════════╗")
-    print("║    ♠                  ♥                  ♦                  ♣            ║")
+    largura_total = 61
+    print("\n" + "═" * largura_total)
+    print("{0:^{width}}".format("MESA", width=largura_total))
+    print("═" * largura_total)
+    print("{0:^{width}}".format("   ♠         ♥         ♦         ♣   ", width=largura_total))
+
     linhas_pilhas = []
-    max_altura = 7  # Altura de uma carta
+    altura_maxima = 8
+    cartas_visiveis = 4
 
     for naipe in NAIPES:
         pilha = mesa[naipe]
-        linhas = []
+        linhas = ["       " for _ in range(altura_maxima)]
+
         if not pilha:
-            linhas.extend(desenhar_carta(None)[0])
+            carta_vazia, _ = desenhar_carta(None)
+            for i in range(len(carta_vazia)):
+                linhas[i] = carta_vazia[i]
         else:
-            num_abaixo = min(len(pilha) - 1, 3)
-            carta_lines, borda_pilha = desenhar_carta(pilha[-1])
-            for _ in range(num_abaixo):
-                linhas.append(borda_pilha)
-            linhas.extend(carta_lines)
-        linhas_pilhas.append(linhas[:max_altura])
+            topo = pilha[-1]
+            empilhadas = pilha[-(cartas_visiveis+1):-1] if len(pilha) > 1 else []
 
-    for linhas in linhas_pilhas:
-        while len(linhas) < max_altura:
-            linhas.append(" " * 13)
+            for idx, carta in enumerate(empilhadas):
+                _, silhueta = desenhar_carta(carta)
+                for i, line in enumerate(silhueta):
+                    pos = idx + i
+                    if pos < altura_maxima:
+                        linhas[pos] = line
 
-    for i in range(max_altura):
-        linha = "  ".join(pilha[i] for pilha in linhas_pilhas)
-        print(f"║ {linha:^68} ║")
-    print("╚══════════════════════════════════════════════════════════════════════════╝\n")
+            carta_lines, _ = desenhar_carta(topo)
+            for i, line in enumerate(carta_lines):
+                pos = len(empilhadas) + i
+                if pos < altura_maxima:
+                    linhas[pos] = line
+
+        linhas_pilhas.append(linhas)
+
+    for i in range(altura_maxima):
+        linha = "   ".join(pilha[i] for pilha in linhas_pilhas)
+        print("{0:^{width}}".format(linha, width=largura_total))
+
+    print("═" * largura_total + "\n")
 
 def imprimir_mao(mao, validas):
-    """Imprime a mão do jogador com cartas alinhadas, sem códigos de entrada."""
     if not mao:
         print("🃏 Sua mão: [Vazia]")
         return
-    print("🃏 Sua mão (cartas com bordas grossas são jogáveis):")
+    print("🃏 Sua mão (bordas grossas = jogáveis):")
     linhas_cartas = [desenhar_carta(carta, carta in validas)[0] for carta in mao]
-    for i in range(7):
+    for i in range(5):
         linha = "  ".join(carta[i] for carta in linhas_cartas)
         print(f"  {linha}")
 
@@ -118,10 +146,10 @@ def jogador_humano(id_jogador, mao, mesa, jogadores, jogadores_maos):
 
         with lock:
             limpar_terminal()
+            checar_terminal()
             print(f"🎮 Turno do Jogador {id_jogador + 1}")
             imprimir_mesa(mesa)
             imprimir_cartas_restantes(jogadores_maos)
-
             print(f"🎯 Sua vez! (Tempo: {tempo_turno}s)")
             validas = cartas_validas(mao, mesa)
             imprimir_mao(mao, validas)
@@ -138,7 +166,6 @@ def jogador_humano(id_jogador, mao, mesa, jogadores, jogadores_maos):
                     print(f"\n🤖 [Bot substituto] Passou a vez.")
 
             print("\n📥 Digite a carta (ex: KE para K♠, JO para J♦) ou 'passar')")
-
             input_queue = queue.Queue()
 
             def get_input():
@@ -199,6 +226,7 @@ def jogador_humano(id_jogador, mao, mesa, jogadores, jogadores_maos):
             turno = (turno + 1) % len(jogadores)
         time.sleep(1)
 
+
 def bot(id_jogador, mao, mesa, jogadores, jogadores_maos):
     global turno, jogo_ativo, vencedor
     while jogo_ativo:
@@ -211,7 +239,6 @@ def bot(id_jogador, mao, mesa, jogadores, jogadores_maos):
             print(f"🎮 Turno do Bot {id_jogador + 1}")
             imprimir_mesa(mesa)
             imprimir_cartas_restantes(jogadores_maos)
-
             validas = cartas_validas(mao, mesa)
             time.sleep(1.5)
 
@@ -232,23 +259,24 @@ def bot(id_jogador, mao, mesa, jogadores, jogadores_maos):
             turno = (turno + 1) % len(jogadores)
         time.sleep(1)
 
+
 def exibir_regras():
     limpar_terminal()
-    print("╔══════════════════════════════════════════════════════════╗")
-    print("║                🃏 DOMINÓ DE CARTAS - REGRAS 🃏            ║")
-    print("╠══════════════════════════════════════════════════════════╣")
-    print("║ - 4 jogadores (você + bots)                              ║")
-    print("║ - Cada um recebe 13 cartas                               ║")
-    print("║ - Mesa com 4 pilhas (♠ ♥ ♦ ♣)                           ║")
-    print("║ - Regras para jogar:                                    ║")
-    print("║   • Rei (K) inicia uma pilha vazia                      ║")
-    print("║   • Carta deve ser do mesmo naipe e valor imediatamente ║")
-    print("║     inferior ao topo (ex: Q sobre K)                    ║")
-    print("║ - Tempo: 50 segundos por jogada                         ║")
-    print("║ - Sem jogada no tempo? Bot joga por você                ║")
-    print("║ - Vence quem descartar todas as cartas primeiro         ║")
-    print("╚══════════════════════════════════════════════════════════╝")
+    print("╔══════════════════════════════════════════════╗")
+    print("║          🃏 DOMINÓ DE CARTAS - REGRAS 🃏    ║")
+    print("╠══════════════════════════════════════════════╣")
+    print("║ - 4 jogadores (você + bots)                  ║")
+    print("║ - Cada um recebe 13 cartas                   ║")
+    print("║ - Mesa com 4 pilhas (♠ ♥ ♦ ♣)                ║")
+    print("║ - Rei (K) inicia uma pilha vazia             ║")
+    print("║ - Carta jogada deve ser do mesmo naipe       ║")
+    print("║   e de valor imediatamente inferior          ║")
+    print("║ - Tempo: 50 segundos por jogada              ║")
+    print("║ - Sem jogada no tempo? Bot joga por você     ║")
+    print("║ - Vence quem descartar todas as cartas       ║")
+    print("╚══════════════════════════════════════════════╝")
     input("\n🎮 Pressione Enter para começar...")
+
 
 def jogar():
     global jogo_ativo, turno, vencedor
@@ -304,6 +332,7 @@ def jogar():
                 return
             else:
                 print("⚠️ Digite 's' para sim ou 'n' para não.")
+
 
 if __name__ == "__main__":
     jogar()
